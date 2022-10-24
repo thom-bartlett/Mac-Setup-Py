@@ -11,6 +11,7 @@ import requests
 import plistlib
 import tempfile
 from Foundation import NSLog
+from license import license
 
 ## TODO
 
@@ -208,7 +209,7 @@ def falcon_Install(app):
         write_log("Installing Falcon")
         os.system("installer -verboseR -package /usr/local/Installomator/FalconSensorMacOS.pkg -target /")
         write_log("Licensing Falcon")
-        os.system("/Applications/Falcon.app/Contents/Resources/falconctl license 6FF67D2A045B42C1B53EB51B9F598813-3C")
+        os.system(f"/Applications/Falcon.app/Contents/Resources/falconctl license {license}")
         appCheck(app)
 
 def dialog_Update(text):
