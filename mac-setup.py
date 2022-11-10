@@ -85,13 +85,6 @@ apps = {
             "Path": "/Applications/Microsoft PowerPoint.app"
         },
         {
-            "Name": "Nextiva",
-            "Trigger": "none",
-            "progresstext": "Nextiva is a Connected Communications company that helps businesses grow faster.",
-            "Icon": "4472613504121ea3cd4a94427207515926c726fbd7774bf52f39143a3607c1d5",
-            "Path": "/Applications/Nextiva App.app"
-        },
-        {
             "Name": "Crowdstrike Falcon",
             "Trigger": "crowdstrike",
             "progresstext": "Leading Cloud-Delivered Endpoint Protection Platform.",
