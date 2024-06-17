@@ -12,12 +12,24 @@ import plistlib
 import tempfile
 from Foundation import NSLog
 from license import license
+import logging
+from logging.handlers import RotatingFileHandler
+
+version = "1.1"
 
 ## TODO
+# improve tool version checking
 
 ## Requirements
 # requires Splashtop install script as part of package
 # requires crowdstrike package cached
+setuplog = "/var/tmp/mac-setup.log"
+logging.basicConfig(filename=setuplog, format='%(asctime)s - %(message)s')
+# add a rotating handler
+logger = logging.getLogger("Rotating Log")
+handler = RotatingFileHandler(setuplog, maxBytes=1000000,
+                                backupCount=5)
+logger.addHandler(handler)
 
 apps = {
     "steps": [
@@ -95,6 +107,7 @@ apps = {
 }
 
 def install_Tools(url, name, signature):
+    logger.warning("installing tools")
     new = requests.get(url, stream=True)
     with tempfile.TemporaryDirectory() as tmpdirname:
         with open(f"{tmpdirname}/{name}", 'wb') as f:
@@ -104,15 +117,15 @@ def install_Tools(url, name, signature):
             result = subprocess.run(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             # if valid install
             if (str(result).find(signature) != "-1"):
-                print("Verified signature and will now install")
+                logger.warning(f"Verified signature and will now install: {name}")
                 try:
                     command = ["/usr/sbin/installer", "-pkg", f"{tmpdirname}/{name}", "-target", "/"]
                     install = subprocess.run(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    print(f"Install results: {install}")
+                    logger.warning(f"Install results: {install}")
                 except Exception as e:
-                    write_log(f"failed to install package with error: {e}")
+                    logger.warning(f"failed to install {name} with error: {e}")
             else:
-                write_log("Signature validation failed - will not install")
+                logger.warning("Signature validation failed - will not install")
                 exit
 
 def check_Tools():
@@ -135,7 +148,8 @@ def check_Tools():
         url = (response.json()["assets"][0]["browser_download_url"])
         name = (response.json()["assets"][0]["name"])
         latest_Version = response.json()["tag_name"][1:]
-        write_log(f"Latest version is: {latest_Version}")
+        logger.warning(f"Latest version of {i} is: {latest_Version}")
+        # this version check needs work
         if os.path.exists(i["path"]):
             if i["name"] == "Installomator":
                 raw_Version = run_cmd([i["path"], "version"])
@@ -143,44 +157,44 @@ def check_Tools():
             elif i["name"] == "SwiftDialog":
                 raw_Version = run_cmd([i["path"], "-v"])
                 version = raw_Version[0].strip()[:6]
-                write_log(f"current version is: {version}")
+                logger.warning(f"current version is: {version}")
             if version != latest_Version:
-                print("Not on latest version")
+                logger.warning("Not on latest version")
                 install_Tools(url, name, i["signature"])
             else:
-                print("On latest version")
+                logger.warning("On latest version")
         else:
-            print("Not installed.")
+            logger.warning(f"{name} is Not installed.")
             install_Tools(url, name, i["signature"])
 
 def splashtop_Install(app):
     # download Install to temp directory
-    write_log("Downloading Splashtop")
+    logger.warning("Downloading Splashtop")
     url = "https://my.splashtop.com/csrs/mac"
     name = "streamer.dmg"
     new = requests.get(url, stream=True)
     f = open(name, "wb")
     f.write(new.content)
-    write_log("check signature Splashtop")
+    logger.warning("check signature Splashtop")
     os.system(f"hdiutil attach {name} -nobrowse -readonly")
     command = ["/usr/sbin/spctl", "-a", "-vv", "/Volumes/SplashtopStreamer/Install Splashtop Streamer.app"]
     result = subprocess.run(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     # if valid install
     if (str(result).find("CPQQ3AW49Y") != "-1"):
-        write_log("Verified signature and will now install")
+        logger.warning("Verified signature and will now install")
         try:
             command = ["/usr/local/Installomator/deploy_splashtop_streamer.sh", "-i", "streamer.dmg", "-d", "ZH2P522JLST3", "-w", "0", "-s", "0", "-v", "0"]
             install = subprocess.run(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            write_log(f"Install results: {install}")
+            logger.warning(f"Install results: {install}")
             if os.path.exists("/Applications/Splashtop Streamer.app"):
                 appCheck(app)
             else:
                 appCheck(app)
         except Exception as e:
-            write_log(f"failed with error: {e}")
+            logger.warning(f"failed with error: {e}")
             appCheck(app)
     else:
-        write_log("Signature validation failed - will not install")
+        logger.warning("Signature validation failed - will not install")
         appCheck(app)
 
 def falcon_Install(app):
@@ -190,18 +204,18 @@ def falcon_Install(app):
     result = run_cmd(command)
     index = 0
     while "CrowdStrike" not in result[0]:
-        write_log("No config profile detected")
+        logger.warning("No Falcon config profile detected")
         time.sleep(3)
         index += 3
         result = run_cmd(command)
         if index >= 1200:
-            write_log("Install Timed out...")
+            logger.warning("Falcon Install Timed out...")
             appCheck(app)
             return
     else:
-        write_log("Installing Falcon")
+        logger.warning("Installing Falcon")
         os.system("installer -verboseR -package /usr/local/Installomator/FalconSensorMacOS.pkg -target /")
-        write_log("Licensing Falcon")
+        logger.warning("Licensing Falcon")
         os.system(f"/Applications/Falcon.app/Contents/Resources/falconctl license {license}")
         appCheck(app)
 
@@ -214,10 +228,6 @@ def caffeinate():
     PID = run_cmd(["pgrep", "Dialog"])
     caf_cmd = ["caffeinate", "-dimsu", "-w", PID[0]]
     subprocess.Popen(caf_cmd)
-
-def write_log(text):
-    """logger for depnotify"""
-    NSLog("[mac-setup] " + str(text))
 
 def run_dialog():
     """Runs the SwiftDialog app and returns the exit code"""
@@ -236,6 +246,7 @@ def run_dialog():
         "messagefont": "size=14",
         "moveable": 1,
         "listitem": listitems,
+        "infotext": version
     }
     jsonString = json.dumps(initial_Dialog)
     progess_Total = str(len(apps["steps"]))
@@ -244,12 +255,12 @@ def run_dialog():
 
 def appCheck(app):
     if os.path.exists(f"{app['Path']}"):
-        write_log("App Installation verified, continuining...")
+        logger.warning(f"{app} Installation verified, continuining...")
         dialog_Update(f"listitem: {app['Name']}: success\n")
         dialog_Update("progress: increment\n")
         return True
     else:
-        write_log("App install failed...")
+        logger.warning(f"{app} install failed...")
         dialog_Update(f"listitem: title: {app['Name']}, status: fail, statustext: Failed\n")
         dialog_Update("progress: increment\n")
         return False
@@ -258,11 +269,13 @@ def run_cmd(cmd):
     """Run the cmd"""
     run = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     output, err = run.communicate()
+    logger.warning(f"Running command: {cmd}")
     if err:
-        print(err)
+        logger.warning(f"command failed with error: {err}")
     return output, err
 
 def finalize():
+    logfile = "/var/tmp/dialog.log"
     # final dialog appearance changes
     dialog_Update("icon: SF=checkmark.circle.fill,weight=bold,colour1=#00ff44,colour2=#075c1e\n")
     dialog_Update("progresstext: Computer configuration complete!\n")
@@ -272,9 +285,9 @@ def finalize():
     dialog_Update("button1text: Done\n")
     dialog_Update("button1: enable\n")
     # cleanup
-    if os.path.exists("/var/tmp/dialog.log"):
-        #os.remove(dialog_command_file)
-        print("command file removed")
+    if os.path.exists(logfile):
+        os.remove(logfile)
+        logger.warning("command file removed")
 
 def main ():
     # check if swiftdialog is installed
@@ -282,12 +295,12 @@ def main ():
     # make sure we are at desktop
     process = run_cmd(["pgrep", "-l", "Setup Assistant"])
     while process[0] != "":
-        print(f"{datetime}: Setup Assistant Still Running")
+        logger.info(f"{datetime}: Setup Assistant Still Running")
         time.sleep(1)
         process = run_cmd(["pgrep", "-l", "Setup Assistant"])
     process = run_cmd(["pgrep", "-l", "Finder"])
     while process[0] == "":
-        print(f"{datetime}: Finder process not found. Assuming device at login screen")
+        logger.info(f"{datetime}: Finder process not found. Assuming device at login screen")
         time.sleep(1)
         process = run_cmd(["pgrep", "-l", "Finder"])
 
@@ -325,6 +338,6 @@ def main ():
     # this updates the result object to get the latest exit code
     result.communicate()
     exit_Code = (result.returncode)
-    write_log(exit_Code)
+    logger.warning(f"Program finished with exit code: {exit_Code}")
 
 main()
